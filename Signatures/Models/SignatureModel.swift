@@ -12,7 +12,17 @@ final class SignatureModel {
     var svgPath: String?
     var pdfPath: String?
     var emfPath: String?
-    
+
+    private static var documentsDirectory: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    }
+
+    var drawingURL: URL { Self.documentsDirectory.appendingPathComponent(drawingPath) }
+    var pngURL: URL    { Self.documentsDirectory.appendingPathComponent(pngPath) }
+    var png2xURL: URL? { png2xPath.map { Self.documentsDirectory.appendingPathComponent($0) } }
+    var svgURL: URL?   { svgPath.map   { Self.documentsDirectory.appendingPathComponent($0) } }
+    var pdfURL: URL?   { pdfPath.map   { Self.documentsDirectory.appendingPathComponent($0) } }
+
     init(
         id: UUID = UUID(),
         title: String,
@@ -34,4 +44,4 @@ final class SignatureModel {
         self.pdfPath = pdfPath
         self.emfPath = emfPath
     }
-} 
+}

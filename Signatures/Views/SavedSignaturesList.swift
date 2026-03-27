@@ -7,11 +7,11 @@ struct SavedSignaturesList: View {
     @Query(sort: \SignatureModel.timestamp, order: .reverse) private var signatures: [SignatureModel]
     @State private var selectedSignature: SignatureModel?
     @State private var showNewSignature = false
-    
+
     init(modelContext: ModelContext) {
         _viewModel = StateObject(wrappedValue: SignatureViewModel(modelContext: modelContext))
     }
-    
+
     var body: some View {
         List {
             Button {
@@ -19,16 +19,26 @@ struct SavedSignaturesList: View {
             } label: {
                 Label("Neue Unterschrift", systemImage: "plus")
             }
-            
+
             ForEach(signatures) { signature in
                 Button {
                     selectedSignature = signature
                 } label: {
-                    VStack(alignment: .leading) {
-                        Text(signature.title)
-                        Text(signature.timestamp.formatted())
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                    HStack(spacing: 12) {
+                        if let uiImage = UIImage(contentsOfFile: signature.pngURL.path) {
+                            Image(uiImage: uiImage)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 80, height: 40)
+                                .background(.white)
+                                .border(Color.gray, width: 0.5)
+                        }
+                        VStack(alignment: .leading) {
+                            Text(signature.title)
+                            Text(signature.timestamp.formatted())
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
                     }
                 }
             }
@@ -39,10 +49,7 @@ struct SavedSignaturesList: View {
             NewSignatureView(viewModel: SignatureViewModel(modelContext: modelContext))
         }
         .navigationDestination(item: $selectedSignature) { signature in
-            SignatureDetailView(
-                signature: signature,
-                modelContext: modelContext
-            )
+            SignatureDetailView(signature: signature, modelContext: modelContext)
         }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -54,11 +61,10 @@ struct SavedSignaturesList: View {
             }
         }
     }
-    
+
     private func deleteSignatures(_ indexSet: IndexSet) {
         for index in indexSet {
-            let signature = signatures[index]
-            viewModel.deleteSignature(signature)
+            viewModel.deleteSignature(signatures[index])
         }
     }
-} 
+}

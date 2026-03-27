@@ -1,38 +1,38 @@
-//
-//  SignaturesApp.swift
-//  Signatures
-//
-//  Created by Tristan Germer on 03.11.24.
-//
-
 import SwiftUI
 import SwiftData
 import TipKit
 
 @main
 struct SignaturesApp: App {
-    let container: ModelContainer
-    
+    let container: ModelContainer?
+
     init() {
         do {
             let schema = Schema([SignatureModel.self])
-            let modelConfiguration = ModelConfiguration(schema: schema)
-            container = try ModelContainer(for: schema, configurations: [modelConfiguration])
+            let config = ModelConfiguration(schema: schema)
+            container = try ModelContainer(for: schema, configurations: [config])
         } catch {
-            fatalError("Could not initialize ModelContainer: \(error)")
+            print("Could not initialize ModelContainer: \(error)")
+            container = nil
         }
     }
-    
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .task {
-                    try? Tips.configure([
-                        .displayFrequency(.immediate),
-                        .datastoreLocation(.applicationDefault),
-                    ])
-                }
+            if let container {
+                ContentView()
+                    .task {
+                        try? Tips.configure([
+                            .displayFrequency(.immediate),
+                            .datastoreLocation(.applicationDefault),
+                        ])
+                    }
+                    .modelContainer(container)
+            } else {
+                Text("Die Datenbank konnte nicht geladen werden.\nBitte starte die App neu.")
+                    .multilineTextAlignment(.center)
+                    .padding()
+            }
         }
-        .modelContainer(container)
     }
 }

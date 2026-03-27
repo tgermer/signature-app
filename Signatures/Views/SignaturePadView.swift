@@ -1,50 +1,45 @@
 import SwiftUI
 import PencilKit
 
-struct SignaturePadView: UIViewRepresentable {
+struct SignaturePadView: View {
     @Binding var canvasView: PKCanvasView
     var guidelineHeight: CGFloat
     var strokeColor: Color
-    
-    func makeUIView(context: Context) -> PKCanvasView {
-        let canvas = canvasView
-        canvas.frame = CGRect(x: 0, y: 0, width: canvas.bounds.width, height: canvas.bounds.height)
-        
-        if canvas.isUserInteractionEnabled {
-            canvas.tool = PKInkingTool(.pen, color: UIColor(strokeColor))
+
+    var body: some View {
+        ZStack {
+            CanvasRepresentable(canvasView: canvasView, strokeColor: strokeColor)
+            GuidelineView(height: guidelineHeight)
         }
-        if canvas.backgroundColor == nil {
-            drawGuideline(at: guidelineHeight)
-        }
-        return canvas
     }
-    
-    /* func updateUIView(_ uiView: PKCanvasView, context: Context) {
-        if uiView.backgroundColor == nil {
-            drawGuideline(at: guidelineHeight)
+}
+
+private struct CanvasRepresentable: UIViewRepresentable {
+    let canvasView: PKCanvasView
+    var strokeColor: Color
+
+    func makeUIView(context: Context) -> PKCanvasView {
+        canvasView.backgroundColor = .clear
+        if canvasView.isUserInteractionEnabled {
+            canvasView.tool = PKInkingTool(.pen, color: UIColor(strokeColor))
         }
-    } */
+        return canvasView
+    }
 
     func updateUIView(_ uiView: PKCanvasView, context: Context) {
-    if uiView.isUserInteractionEnabled {
-        uiView.tool = PKInkingTool(.pen, color: UIColor(strokeColor))
-    }
-    drawGuideline(at: guidelineHeight)
-}
-    
-    private func drawGuideline(at height: CGFloat) {
-        let renderer = UIGraphicsImageRenderer(size: canvasView.bounds.size)
-        let guidelineImage = renderer.image { context in
-            let path = UIBezierPath()
-            let y = canvasView.bounds.height - height
-            path.move(to: CGPoint(x: 0, y: y))
-            path.addLine(to: CGPoint(x: canvasView.bounds.width, y: y))
-            
-            UIColor.gray.withAlphaComponent(0.3).setStroke()
-            path.lineWidth = 0.5
-            path.stroke()
+        if uiView.isUserInteractionEnabled {
+            uiView.tool = PKInkingTool(.pen, color: UIColor(strokeColor))
         }
-        
-        canvasView.backgroundColor = UIColor(patternImage: guidelineImage)
     }
-} 
+}
+
+#Preview {
+    SignaturePadView(
+        canvasView: .constant(PKCanvasView()),
+        guidelineHeight: 60,
+        strokeColor: Color(red: 49/255, green: 39/255, blue: 129/255)
+    )
+    .frame(width: 226.772 * 2, height: 113.386 * 2)
+    .background(.white)
+    .border(.gray, width: 0.5)
+}

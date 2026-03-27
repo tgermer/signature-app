@@ -11,7 +11,7 @@ struct SignatureDetailView: View {
     @State private var displayCanvas = PKCanvasView()
     @Environment(\.dismiss) private var dismiss
     let addRenameTip = AddRenameTip()
-    
+
     init(signature: SignatureModel, modelContext: ModelContext) {
         self.signature = signature
         _viewModel = StateObject(wrappedValue: SignatureViewModel(
@@ -20,7 +20,7 @@ struct SignatureDetailView: View {
         ))
         _editedTitle = State(initialValue: signature.title)
     }
-    
+
     private func updateCanvas() {
         displayCanvas.bounds = CGRect(x: 0, y: 0, width: viewModel.canvasWidth, height: viewModel.canvasHeight)
         displayCanvas.backgroundColor = .clear
@@ -30,7 +30,7 @@ struct SignatureDetailView: View {
             displayCanvas.drawing = drawing
         }
     }
-    
+
     var body: some View {
         VStack(spacing: 30) {
             TextField("Titel", text: $editedTitle)
@@ -39,17 +39,17 @@ struct SignatureDetailView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
                 .padding()
-                .onChange(of: signature.title) { oldValue, newValue in
+                .onChange(of: signature.title) { _, newValue in
                     editedTitle = newValue
                 }
-                .onChange(of: editedTitle) { oldValue, newValue in
+                .onChange(of: editedTitle) { _, newValue in
                     hasUnsavedChanges = newValue != signature.title
                 }
                 .popoverTip(addRenameTip)
-            
+
             Text(signature.timestamp.formatted())
                 .foregroundColor(.secondary)
-            
+
             SignaturePadView(
                 canvasView: .constant(displayCanvas),
                 guidelineHeight: viewModel.guidelineHeight,
@@ -59,46 +59,45 @@ struct SignatureDetailView: View {
             .background(.white)
             .border(Color.gray, width: 0.5)
             .id(signature.id)
-            
+
             HStack(alignment: .center, spacing: 20) {
                 if viewModel.exportSettings.includePNG {
                     ShareLink(
-                        item: URL(filePath: signature.pngPath),
+                        item: signature.pngURL,
                         preview: SharePreview(
                             signature.title,
-                            image: Image(uiImage: UIImage(contentsOfFile: signature.pngPath) ?? UIImage())
+                            image: Image(uiImage: UIImage(contentsOfFile: signature.pngURL.path) ?? UIImage())
                         )
                     ) {
                         Label("PNG teilen", systemImage: "square.and.arrow.up")
                     }
                 }
-                
-                if viewModel.exportSettings.includePNG2x, let png2xPath = signature.png2xPath {
+
+                if viewModel.exportSettings.includePNG2x, let url = signature.png2xURL {
                     ShareLink(
-                        item: URL(filePath: png2xPath),
+                        item: url,
                         preview: SharePreview(
                             signature.title,
-                            image: Image(uiImage: UIImage(contentsOfFile: png2xPath) ?? UIImage())
+                            image: Image(uiImage: UIImage(contentsOfFile: url.path) ?? UIImage())
                         )
                     ) {
                         Label("PNG (2x) teilen", systemImage: "square.and.arrow.up")
                     }
                 }
-                
-                if viewModel.exportSettings.includeSVG, let svgPath = signature.svgPath {
-                    ShareLink(item: URL(filePath: svgPath)) {
+
+                if viewModel.exportSettings.includeSVG, let url = signature.svgURL {
+                    ShareLink(item: url) {
                         Label("SVG teilen", systemImage: "square.and.arrow.up")
                     }
                 }
-                
-                if viewModel.exportSettings.includePDF, let pdfPath = signature.pdfPath {
-                    ShareLink(item: URL(filePath: pdfPath)) {
+
+                if viewModel.exportSettings.includePDF, let url = signature.pdfURL {
+                    ShareLink(item: url) {
                         Label("PDF teilen", systemImage: "square.and.arrow.up")
                     }
                 }
             }
-            
-            
+
             Button("Speichern") {
                 viewModel.renameSignature(signature, newTitle: editedTitle)
                 hasUnsavedChanges = false
@@ -116,14 +115,13 @@ struct SignatureDetailView: View {
                     Image(systemName: "trash")
                 }
                 .foregroundColor(.red)
-                
             }
         }
         .onAppear {
             viewModel.loadDrawing(from: signature)
             updateCanvas()
         }
-        .onChange(of: signature.id) { 
+        .onChange(of: signature.id) {
             viewModel.loadDrawing(from: signature)
             updateCanvas()
         }
@@ -139,10 +137,10 @@ struct SignatureDetailView: View {
             signature: SignatureModel(
                 title: "Test Signature",
                 timestamp: Date(),
-                drawingPath: "/tmp/test.drawing",
-                pngPath: "/tmp/test.png",
-                png2xPath: "/tmp/test@2x.png",
-                svgPath: "/tmp/test.svg"
+                drawingPath: "test.drawing",
+                pngPath: "test.png",
+                png2xPath: "test@2x.png",
+                svgPath: "test.svg"
             ),
             modelContext: try! ModelContainer(for: SignatureModel.self, configurations: ModelConfiguration()).mainContext
         )
@@ -154,4 +152,3 @@ struct SignatureDetailView: View {
         }
     }
 }
-
