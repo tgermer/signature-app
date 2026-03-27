@@ -5,12 +5,14 @@ struct SettingsView: View {
     @Environment(\.dismiss) var dismiss
     @ObservedObject var viewModel: SignatureViewModel
 
-    let defaultStrokeColorHM  = Color(red: 49/255, green: 39/255, blue: 129/255)
+    let defaultStrokeColorHM   = Color(red: 49/255, green: 39/255, blue: 129/255)
     let defaultGuidelineHeight: CGFloat = 60
+    let defaultStrokeWidth:     CGFloat = 3.0
 
     private var hasChanges: Bool {
-        viewModel.strokeColor != defaultStrokeColorHM ||
-        viewModel.guidelineHeight != defaultGuidelineHeight
+        viewModel.strokeColor    != defaultStrokeColorHM   ||
+        viewModel.guidelineHeight != defaultGuidelineHeight ||
+        viewModel.strokeWidth    != defaultStrokeWidth
     }
 
     var body: some View {
@@ -22,6 +24,11 @@ struct SettingsView: View {
                     }
 
                 VStack(alignment: .leading) {
+                    Text("Strichstärke: \(viewModel.strokeWidth, specifier: "%.1f") pt")
+                    Slider(value: $viewModel.strokeWidth, in: 1...20, step: 0.5)
+                }
+
+                VStack(alignment: .leading) {
                     Text("Hilfslinienhöhe: \(Int(viewModel.guidelineHeight)) mm")
                     Slider(value: $viewModel.guidelineHeight, in: 0...240)
                 }
@@ -30,6 +37,7 @@ struct SettingsView: View {
             Section("Standardwerte wiederherstellen") {
                 Button {
                     viewModel.strokeColor     = defaultStrokeColorHM
+                    viewModel.strokeWidth     = defaultStrokeWidth
                     viewModel.guidelineHeight = defaultGuidelineHeight
                     viewModel.updateStrokeColor()
                 } label: {

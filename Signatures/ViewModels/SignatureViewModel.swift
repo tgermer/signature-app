@@ -41,6 +41,12 @@ class SignatureViewModel: ObservableObject {
     @Published var canvasView = PKCanvasView()
     @Published var title = ""
     @Published var strokeColor: Color = Color(red: 49/255, green: 39/255, blue: 129/255)
+    @Published var strokeWidth: CGFloat = UserDefaults.standard.object(forKey: "strokeWidth") as? CGFloat ?? 3.0 {
+        didSet {
+            UserDefaults.standard.set(strokeWidth, forKey: "strokeWidth")
+            updateStrokeColor()
+        }
+    }
     @Published var guidelineHeight: CGFloat = 60
     @Published var exportSettings = ExportSettings.load() {
         didSet { exportSettings.save() }
@@ -69,7 +75,7 @@ class SignatureViewModel: ObservableObject {
 
     func setupCanvas() {
         canvasView = PKCanvasView()
-        canvasView.tool = PKInkingTool(.pen, color: UIColor(strokeColor))
+        canvasView.tool = PKInkingTool(.pen, color: UIColor(strokeColor), width: strokeWidth)
         canvasView.drawingPolicy = .anyInput
         canvasView.backgroundColor = .clear
         canvasView.bounds = CGRect(x: 0, y: 0, width: canvasWidth, height: canvasHeight)
@@ -77,11 +83,11 @@ class SignatureViewModel: ObservableObject {
 
     func clearSignature() {
         canvasView.drawing = PKDrawing()
-        canvasView.tool = PKInkingTool(.pen, color: UIColor(strokeColor))
+        canvasView.tool = PKInkingTool(.pen, color: UIColor(strokeColor), width: strokeWidth)
     }
 
     func updateStrokeColor() {
-        canvasView.tool = PKInkingTool(.pen, color: UIColor(strokeColor))
+        canvasView.tool = PKInkingTool(.pen, color: UIColor(strokeColor), width: strokeWidth)
     }
 
     // MARK: - Export (neue Unterschrift)
