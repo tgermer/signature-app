@@ -53,7 +53,8 @@ struct SignatureDetailView: View {
             SignaturePadView(
                 canvasView: .constant(displayCanvas),
                 guidelineHeight: viewModel.guidelineHeight,
-                strokeColor: viewModel.strokeColor
+                strokeColor: viewModel.strokeColor,
+                strokeWidth: viewModel.strokeWidth
             )
             .frame(width: viewModel.canvasWidth, height: viewModel.canvasHeight)
             .background(.white)

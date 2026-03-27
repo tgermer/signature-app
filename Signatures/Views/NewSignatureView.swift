@@ -20,7 +20,8 @@ struct NewSignatureView: View {
                 SignaturePadView(
                     canvasView: $viewModel.canvasView,
                     guidelineHeight: viewModel.guidelineHeight,
-                    strokeColor: viewModel.strokeColor
+                    strokeColor: viewModel.strokeColor,
+                    strokeWidth: viewModel.strokeWidth
                 )
                 .frame(width: viewModel.canvasWidth, height: viewModel.canvasHeight)
                 .background(.white)
