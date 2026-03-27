@@ -96,6 +96,12 @@ struct SignatureDetailView: View {
                         Label("PDF teilen", systemImage: "square.and.arrow.up")
                     }
                 }
+
+                if viewModel.exportSettings.includeEMF, let url = signature.emfURL {
+                    ShareLink(item: url) {
+                        Label("EMF teilen", systemImage: "square.and.arrow.up")
+                    }
+                }
             }
 
             Button("Speichern") {

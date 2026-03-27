@@ -7,6 +7,7 @@ struct ExportSettings {
     var includePNG2x = true
     var includeSVG = true
     var includePDF = true
+    var includeEMF = false
 
     static func load() -> ExportSettings {
         let d = UserDefaults.standard
@@ -14,7 +15,8 @@ struct ExportSettings {
             includePNG:   d.object(forKey: "export.png")   as? Bool ?? true,
             includePNG2x: d.object(forKey: "export.png2x") as? Bool ?? true,
             includeSVG:   d.object(forKey: "export.svg")   as? Bool ?? true,
-            includePDF:   d.object(forKey: "export.pdf")   as? Bool ?? true
+            includePDF:   d.object(forKey: "export.pdf")   as? Bool ?? true,
+            includeEMF:   d.object(forKey: "export.emf")   as? Bool ?? false
         )
     }
 
@@ -24,6 +26,7 @@ struct ExportSettings {
         d.set(includePNG2x, forKey: "export.png2x")
         d.set(includeSVG,   forKey: "export.svg")
         d.set(includePDF,   forKey: "export.pdf")
+        d.set(includeEMF,   forKey: "export.emf")
     }
 }
 
@@ -111,6 +114,12 @@ class SignatureViewModel: ObservableObject {
             pdfFilename = "\(filename).pdf"
         }
 
+        var emfFilename: String? = nil
+        if exportSettings.includeEMF {
+            try await exportEMF(filename: filename)
+            emfFilename = "\(filename).emf"
+        }
+
         let model = SignatureModel(
             title: title,
             timestamp: Date(),
@@ -118,7 +127,8 @@ class SignatureViewModel: ObservableObject {
             pngPath: "\(filename).png",
             png2xPath: png2xFilename,
             svgPath: svgFilename,
-            pdfPath: pdfFilename
+            pdfPath: pdfFilename,
+            emfPath: emfFilename
         )
         modelContext.insert(model)
         try modelContext.save()
@@ -189,6 +199,16 @@ class SignatureViewModel: ObservableObject {
         try await saveFile(data: Data(svg.utf8), filename: "\(filename).svg")
     }
 
+    private func exportEMF(filename: String) async throws {
+        guard let tool = canvasView.tool as? PKInkingTool else { return }
+        let data = EMFExporter.generate(
+            drawing: canvasView.drawing,
+            strokeColor: UIColor(strokeColor),
+            strokeWidth: tool.width
+        )
+        try await saveFile(data: data, filename: "\(filename).emf")
+    }
+
     private func exportPDF(filename: String) async throws {
         let pdfData = NSMutableData()
         let pageRect = CGRect(x: 0, y: 0, width: exportWidth, height: exportHeight)
@@ -251,6 +271,7 @@ class SignatureViewModel: ObservableObject {
         if let url = signature.png2xURL { try? FileManager.default.removeItem(at: url) }
         if let url = signature.svgURL   { try? FileManager.default.removeItem(at: url) }
         if let url = signature.pdfURL   { try? FileManager.default.removeItem(at: url) }
+        if let url = signature.emfURL   { try? FileManager.default.removeItem(at: url) }
         modelContext.delete(signature)
         try? modelContext.save()
     }

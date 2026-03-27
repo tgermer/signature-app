@@ -22,6 +22,7 @@ final class SignatureModel {
     var png2xURL: URL? { png2xPath.map { Self.documentsDirectory.appendingPathComponent($0) } }
     var svgURL: URL?   { svgPath.map   { Self.documentsDirectory.appendingPathComponent($0) } }
     var pdfURL: URL?   { pdfPath.map   { Self.documentsDirectory.appendingPathComponent($0) } }
+    var emfURL: URL?   { emfPath.map   { Self.documentsDirectory.appendingPathComponent($0) } }
 
     init(
         id: UUID = UUID(),

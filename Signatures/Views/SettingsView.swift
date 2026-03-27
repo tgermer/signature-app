@@ -48,6 +48,7 @@ struct SettingsView: View {
                 Toggle("PNG 2x (144 DPI)", isOn: $viewModel.exportSettings.includePNG2x)
                 Toggle("SVG", isOn: $viewModel.exportSettings.includeSVG)
                 Toggle("PDF", isOn: $viewModel.exportSettings.includePDF)
+                Toggle("EMF (Windows)", isOn: $viewModel.exportSettings.includeEMF)
             }
         }
         .navigationTitle("Einstellungen")
