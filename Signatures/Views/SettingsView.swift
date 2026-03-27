@@ -4,35 +4,35 @@ import SwiftData
 struct SettingsView: View {
     @Environment(\.dismiss) var dismiss
     @ObservedObject var viewModel: SignatureViewModel
-    
-    let defaultStrokeColorHM = Color(red: 49/255, green: 39/255, blue: 129/255)
-    let defaultGuidelineHeightHM: CGFloat = 60
-    
+
+    let defaultStrokeColorHM  = Color(red: 49/255, green: 39/255, blue: 129/255)
+    let defaultGuidelineHeight: CGFloat = 60
+
     private var hasChanges: Bool {
-        return viewModel.strokeColor != defaultStrokeColorHM || 
-               viewModel.guidelineHeight != defaultGuidelineHeightHM
+        viewModel.strokeColor != defaultStrokeColorHM ||
+        viewModel.guidelineHeight != defaultGuidelineHeight
     }
-    
+
     var body: some View {
         Form {
             Section("Unterschrift und Canvas") {
                 ColorPicker("Stiftfarbe", selection: $viewModel.strokeColor)
-                    .onChange(of: viewModel.strokeColor) { oldValue, newValue in
+                    .onChange(of: viewModel.strokeColor) { _, _ in
                         viewModel.updateStrokeColor()
                     }
-                
+
                 VStack(alignment: .leading) {
                     Text("Hilfslinienhöhe: \(Int(viewModel.guidelineHeight)) mm")
                     Slider(value: $viewModel.guidelineHeight, in: 0...240)
                 }
             }
-            
+
             Section("Standardwerte wiederherstellen") {
-                Button(action: {
-                    viewModel.strokeColor = defaultStrokeColorHM
-                    viewModel.guidelineHeight = defaultGuidelineHeightHM
+                Button {
+                    viewModel.strokeColor     = defaultStrokeColorHM
+                    viewModel.guidelineHeight = defaultGuidelineHeight
                     viewModel.updateStrokeColor()
-                }) {
+                } label: {
                     HStack {
                         Text("HM-Standards")
                         Spacer()
@@ -42,22 +42,41 @@ struct SettingsView: View {
                 .foregroundStyle(.blue)
                 .disabled(!hasChanges)
             }
-            
+
             Section("Export-Einstellungen") {
-                Toggle("PNG (72 DPI)", isOn: $viewModel.exportSettings.includePNG)
-                Toggle("PNG 2x (144 DPI)", isOn: $viewModel.exportSettings.includePNG2x)
+                Toggle("PNG (1×)", isOn: $viewModel.exportSettings.includePNG)
+
+                Toggle("PNG (2×)", isOn: $viewModel.exportSettings.includePNG2x)
+                    .onChange(of: viewModel.exportSettings.includePNG2x) { _, isOn in
+                        if isOn { Task { await viewModel.regenerateMissingExports() } }
+                    }
+
+                Toggle("PNG (3×)", isOn: $viewModel.exportSettings.includePNG3x)
+                    .onChange(of: viewModel.exportSettings.includePNG3x) { _, isOn in
+                        if isOn { Task { await viewModel.regenerateMissingExports() } }
+                    }
+
                 Toggle("SVG", isOn: $viewModel.exportSettings.includeSVG)
+                    .onChange(of: viewModel.exportSettings.includeSVG) { _, isOn in
+                        if isOn { Task { await viewModel.regenerateMissingExports() } }
+                    }
+
                 Toggle("PDF", isOn: $viewModel.exportSettings.includePDF)
+                    .onChange(of: viewModel.exportSettings.includePDF) { _, isOn in
+                        if isOn { Task { await viewModel.regenerateMissingExports() } }
+                    }
+
                 Toggle("EMF (Windows)", isOn: $viewModel.exportSettings.includeEMF)
+                    .onChange(of: viewModel.exportSettings.includeEMF) { _, isOn in
+                        if isOn { Task { await viewModel.regenerateMissingExports() } }
+                    }
             }
         }
         .navigationTitle("Einstellungen")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Fertig") {
-                    dismiss()
-                }
+                Button("Fertig") { dismiss() }
             }
         }
     }
@@ -67,5 +86,4 @@ struct SettingsView: View {
     NavigationStack {
         SettingsView(viewModel: SignatureViewModel(modelContext: try! ModelContainer(for: SignatureModel.self, configurations: ModelConfiguration()).mainContext))
     }
-} 
-
+}

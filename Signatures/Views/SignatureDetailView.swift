@@ -9,6 +9,8 @@ struct SignatureDetailView: View {
     @State private var hasUnsavedChanges = false
     @State private var editedTitle: String
     @State private var displayCanvas = PKCanvasView()
+    @State private var zipURL: URL?
+    @State private var isPreparingZIP = false
     @Environment(\.dismiss) private var dismiss
     let addRenameTip = AddRenameTip()
 
@@ -39,10 +41,8 @@ struct SignatureDetailView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
                 .padding()
-                .onChange(of: signature.title) { _, newValue in
-                    editedTitle = newValue
-                }
-                .onChange(of: editedTitle) { _, newValue in
+                .onChange(of: signature.title) { _, newValue in editedTitle = newValue }
+                .onChange(of: editedTitle)     { _, newValue in
                     hasUnsavedChanges = newValue != signature.title
                 }
                 .popoverTip(addRenameTip)
@@ -60,48 +60,67 @@ struct SignatureDetailView: View {
             .border(Color.gray, width: 0.5)
             .id(signature.id)
 
-            HStack(alignment: .center, spacing: 20) {
-                if viewModel.exportSettings.includePNG {
-                    ShareLink(
-                        item: signature.pngURL,
-                        preview: SharePreview(
-                            signature.title,
-                            image: Image(uiImage: UIImage(contentsOfFile: signature.pngURL.path) ?? UIImage())
-                        )
-                    ) {
-                        Label("PNG teilen", systemImage: "square.and.arrow.up")
+            // Share-Buttons – scrollbar, da es bis zu 7 Buttons geben kann
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 16) {
+                    if viewModel.exportSettings.includePNG {
+                        ShareLink(
+                            item: signature.pngURL,
+                            preview: SharePreview(signature.title,
+                                image: Image(uiImage: UIImage(contentsOfFile: signature.pngURL.path) ?? UIImage()))
+                        ) { Label("PNG", systemImage: "square.and.arrow.up") }
                     }
-                }
 
-                if viewModel.exportSettings.includePNG2x, let url = signature.png2xURL {
-                    ShareLink(
-                        item: url,
-                        preview: SharePreview(
-                            signature.title,
-                            image: Image(uiImage: UIImage(contentsOfFile: url.path) ?? UIImage())
-                        )
-                    ) {
-                        Label("PNG (2x) teilen", systemImage: "square.and.arrow.up")
+                    if viewModel.exportSettings.includePNG2x, let url = signature.png2xURL {
+                        ShareLink(
+                            item: url,
+                            preview: SharePreview(signature.title,
+                                image: Image(uiImage: UIImage(contentsOfFile: url.path) ?? UIImage()))
+                        ) { Label("PNG 2×", systemImage: "square.and.arrow.up") }
                     }
-                }
 
-                if viewModel.exportSettings.includeSVG, let url = signature.svgURL {
-                    ShareLink(item: url) {
-                        Label("SVG teilen", systemImage: "square.and.arrow.up")
+                    if viewModel.exportSettings.includePNG3x, let url = signature.png3xURL {
+                        ShareLink(
+                            item: url,
+                            preview: SharePreview(signature.title,
+                                image: Image(uiImage: UIImage(contentsOfFile: url.path) ?? UIImage()))
+                        ) { Label("PNG 3×", systemImage: "square.and.arrow.up") }
                     }
-                }
 
-                if viewModel.exportSettings.includePDF, let url = signature.pdfURL {
-                    ShareLink(item: url) {
-                        Label("PDF teilen", systemImage: "square.and.arrow.up")
+                    if viewModel.exportSettings.includeSVG, let url = signature.svgURL {
+                        ShareLink(item: url) { Label("SVG", systemImage: "square.and.arrow.up") }
                     }
-                }
 
-                if viewModel.exportSettings.includeEMF, let url = signature.emfURL {
-                    ShareLink(item: url) {
-                        Label("EMF teilen", systemImage: "square.and.arrow.up")
+                    if viewModel.exportSettings.includePDF, let url = signature.pdfURL {
+                        ShareLink(item: url) { Label("PDF", systemImage: "square.and.arrow.up") }
+                    }
+
+                    if viewModel.exportSettings.includeEMF, let url = signature.emfURL {
+                        ShareLink(item: url) { Label("EMF", systemImage: "square.and.arrow.up") }
+                    }
+
+                    Divider().frame(height: 24)
+
+                    // ZIP: erst erstellen, dann teilen
+                    if isPreparingZIP {
+                        ProgressView().controlSize(.small)
+                    } else if let url = zipURL {
+                        ShareLink(item: url) {
+                            Label("ZIP", systemImage: "archivebox")
+                        }
+                    } else {
+                        Button {
+                            Task {
+                                isPreparingZIP = true
+                                zipURL = try? await viewModel.createZIP(for: signature)
+                                isPreparingZIP = false
+                            }
+                        } label: {
+                            Label("ZIP erstellen", systemImage: "archivebox")
+                        }
                     }
                 }
+                .padding(.horizontal)
             }
 
             Button("Speichern") {
@@ -130,10 +149,9 @@ struct SignatureDetailView: View {
         .onChange(of: signature.id) {
             viewModel.loadDrawing(from: signature)
             updateCanvas()
+            zipURL = nil
         }
-        .onChange(of: viewModel.currentDrawing) { _, _ in
-            updateCanvas()
-        }
+        .onChange(of: viewModel.currentDrawing) { _, _ in updateCanvas() }
     }
 }
 

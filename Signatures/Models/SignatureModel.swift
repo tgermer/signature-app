@@ -9,6 +9,7 @@ final class SignatureModel {
     var drawingPath: String
     var pngPath: String
     var png2xPath: String?
+    var png3xPath: String?
     var svgPath: String?
     var pdfPath: String?
     var emfPath: String?
@@ -20,6 +21,7 @@ final class SignatureModel {
     var drawingURL: URL { Self.documentsDirectory.appendingPathComponent(drawingPath) }
     var pngURL: URL    { Self.documentsDirectory.appendingPathComponent(pngPath) }
     var png2xURL: URL? { png2xPath.map { Self.documentsDirectory.appendingPathComponent($0) } }
+    var png3xURL: URL? { png3xPath.map { Self.documentsDirectory.appendingPathComponent($0) } }
     var svgURL: URL?   { svgPath.map   { Self.documentsDirectory.appendingPathComponent($0) } }
     var pdfURL: URL?   { pdfPath.map   { Self.documentsDirectory.appendingPathComponent($0) } }
     var emfURL: URL?   { emfPath.map   { Self.documentsDirectory.appendingPathComponent($0) } }
@@ -31,6 +33,7 @@ final class SignatureModel {
         drawingPath: String,
         pngPath: String,
         png2xPath: String? = nil,
+        png3xPath: String? = nil,
         svgPath: String? = nil,
         pdfPath: String? = nil,
         emfPath: String? = nil
@@ -41,6 +44,7 @@ final class SignatureModel {
         self.drawingPath = drawingPath
         self.pngPath = pngPath
         self.png2xPath = png2xPath
+        self.png3xPath = png3xPath
         self.svgPath = svgPath
         self.pdfPath = pdfPath
         self.emfPath = emfPath
