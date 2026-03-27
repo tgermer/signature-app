@@ -254,9 +254,9 @@ class SignatureViewModel: ObservableObject {
     }
 
     private func makeSVGString(drawing: PKDrawing, strokeColor: UIColor, strokeWidth: CGFloat) -> String {
-        let scale: CGFloat = 2.0
-        let penWidth = strokeWidth / scale
+        let cs: CGFloat = 2.0  // 2× canvas → 1× SVG viewBox
         let colorHex = strokeColor.hexString
+        let f: (CGFloat) -> String = { String(format: "%.3f", $0) }
 
         var svg = """
         <?xml version="1.0" encoding="UTF-8" standalone="no"?>
@@ -269,19 +269,46 @@ class SignatureViewModel: ObservableObject {
 
         for stroke in drawing.strokes {
             let pts = Array(stroke.path)
-            guard pts.count >= 2 else { continue }
+            guard !pts.isEmpty else { continue }
 
-            var d = "M\(pts[0].location.x / scale),\(pts[0].location.y / scale)"
-            for i in 0..<pts.count - 1 {
-                let p = pts[i], q = pts[i + 1]
-                d += " Q\(p.location.x / scale),\(p.location.y / scale)"
-                 + " \((p.location.x + q.location.x) / (2 * scale)),\((p.location.y + q.location.y) / (2 * scale))"
+            let n = pts.count - 1
+
+            if pts.count == 1 {
+                let p = pts[0]
+                let r = max(p.size.width, 0.5) / 2.0 / cs
+                svg += "<circle cx=\"\(f(p.location.x / cs))\" cy=\"\(f(p.location.y / cs))\""
+                     + " r=\"\(f(r))\" fill=\"\(colorHex)\"/>\n"
+                continue
             }
-            let last = pts[pts.count - 1]
-            d += " L\(last.location.x / scale),\(last.location.y / scale)"
 
-            svg += "<path d=\"\(d)\" fill=\"none\" stroke=\"\(colorHex)\""
-                 + " stroke-width=\"\(penWidth)\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n"
+            let (L2, R2) = svgStrokeOutline(pts)
+            let L = L2.map { CGPoint(x: $0.x / cs, y: $0.y / cs) }
+            let R = R2.map { CGPoint(x: $0.x / cs, y: $0.y / cs) }
+
+            // Round start cap
+            let rStart = max(pts[0].size.width, 0.5) / 2.0 / cs
+            svg += "<circle cx=\"\(f(pts[0].location.x / cs))\" cy=\"\(f(pts[0].location.y / cs))\""
+                 + " r=\"\(f(rStart))\" fill=\"\(colorHex)\"/>\n"
+            // Round end cap
+            let rEnd = max(pts[n].size.width, 0.5) / 2.0 / cs
+            svg += "<circle cx=\"\(f(pts[n].location.x / cs))\" cy=\"\(f(pts[n].location.y / cs))\""
+                 + " r=\"\(f(rEnd))\" fill=\"\(colorHex)\"/>\n"
+
+            // Filled outline polygon — midpoint spline for smooth edges
+            var d = "M\(f(L[0].x)),\(f(L[0].y))"
+            for i in 0..<n {
+                let a = L[i], b = L[i + 1]
+                d += " Q\(f(a.x)),\(f(a.y)) \(f((a.x + b.x) / 2)),\(f((a.y + b.y) / 2))"
+            }
+            d += " L\(f(L[n].x)),\(f(L[n].y))"
+            d += " L\(f(R[n].x)),\(f(R[n].y))"
+            for i in stride(from: n, through: 1, by: -1) {
+                let a = R[i], b = R[i - 1]
+                d += " Q\(f(a.x)),\(f(a.y)) \(f((a.x + b.x) / 2)),\(f((a.y + b.y) / 2))"
+            }
+            d += " L\(f(R[0].x)),\(f(R[0].y))"
+            d += " Z"
+            svg += "<path d=\"\(d)\" fill=\"\(colorHex)\" stroke=\"none\"/>\n"
         }
 
         svg += "</svg>"
@@ -290,37 +317,93 @@ class SignatureViewModel: ObservableObject {
 
     private func makePDFData(drawing: PKDrawing, strokeColor: UIColor, strokeWidth: CGFloat) -> Data? {
         let pdfData = NSMutableData()
-        let scale: CGFloat = 0.5
 
-        UIGraphicsBeginPDFContextToData(pdfData, CGRect(x: 0, y: 0, width: exportWidth, height: exportHeight), nil)
+        UIGraphicsBeginPDFContextToData(
+            pdfData, CGRect(x: 0, y: 0, width: exportWidth, height: exportHeight), nil)
         UIGraphicsBeginPDFPage()
 
-        if let ctx = UIGraphicsGetCurrentContext() {
-            ctx.scaleBy(x: scale, y: scale)
-            for stroke in drawing.strokes {
-                let pts = Array(stroke.path)
-                guard pts.count >= 2 else { continue }
-                let path = UIBezierPath()
-                path.move(to: pts[0].location)
-                for i in 0..<pts.count - 1 {
-                    let p = pts[i], q = pts[i + 1]
-                    path.addQuadCurve(
-                        to: CGPoint(x: (p.location.x + q.location.x) / 2,
-                                    y: (p.location.y + q.location.y) / 2),
-                        controlPoint: p.location
-                    )
-                }
-                path.addLine(to: pts[pts.count - 1].location)
-                strokeColor.setStroke()
-                path.lineWidth     = strokeWidth
-                path.lineCapStyle  = .round
-                path.lineJoinStyle = .round
-                path.stroke()
+        guard let ctx = UIGraphicsGetCurrentContext() else {
+            UIGraphicsEndPDFContext()
+            return pdfData as Data
+        }
+
+        ctx.scaleBy(x: 0.5, y: 0.5)   // 2× canvas → 1× PDF pts
+        strokeColor.setFill()
+
+        for stroke in drawing.strokes {
+            let pts = Array(stroke.path)
+            guard !pts.isEmpty else { continue }
+
+            let n = pts.count - 1
+            let rStart = max(pts[0].size.width, 0.5) / 2.0
+            let rEnd   = max(pts[n].size.width, 0.5) / 2.0
+
+            if pts.count == 1 {
+                let loc = pts[0].location
+                UIBezierPath(ovalIn: CGRect(x: loc.x - rStart, y: loc.y - rStart,
+                                            width: rStart * 2, height: rStart * 2)).fill()
+                continue
             }
+
+            let (L, R) = svgStrokeOutline(pts)
+
+            // Filled outline polygon — midpoint spline for smooth edges
+            let path = UIBezierPath()
+            path.move(to: L[0])
+            for i in 0..<n {
+                let mid = CGPoint(x: (L[i].x + L[i+1].x) / 2, y: (L[i].y + L[i+1].y) / 2)
+                path.addQuadCurve(to: mid, controlPoint: L[i])
+            }
+            path.addLine(to: L[n])
+            path.addLine(to: R[n])
+            for i in stride(from: n, through: 1, by: -1) {
+                let mid = CGPoint(x: (R[i].x + R[i-1].x) / 2, y: (R[i].y + R[i-1].y) / 2)
+                path.addQuadCurve(to: mid, controlPoint: R[i])
+            }
+            path.addLine(to: R[0])
+            path.close()
+            path.fill()
+
+            // Round caps as filled circles
+            let s = pts[0].location
+            UIBezierPath(ovalIn: CGRect(x: s.x - rStart, y: s.y - rStart,
+                                        width: rStart * 2, height: rStart * 2)).fill()
+            let e = pts[n].location
+            UIBezierPath(ovalIn: CGRect(x: e.x - rEnd, y: e.y - rEnd,
+                                        width: rEnd * 2, height: rEnd * 2)).fill()
         }
 
         UIGraphicsEndPDFContext()
         return pdfData as Data
+    }
+
+    // MARK: - Variable-width stroke outline
+
+    /// Returns left and right outline edge points for a stroke (in 2× canvas coords).
+    private func svgStrokeOutline(_ pts: [PKStrokePoint]) -> (left: [CGPoint], right: [CGPoint]) {
+        var L: [CGPoint] = [], R: [CGPoint] = []
+        for i in 0..<pts.count {
+            let loc   = pts[i].location
+            let halfW = max(pts[i].size.width, 0.5) / 2.0
+            let t     = strokeTangent(at: i, pts: pts)
+            let n     = CGPoint(x: -t.y, y: t.x)  // perpendicular (90° CCW)
+            L.append(CGPoint(x: loc.x + n.x * halfW, y: loc.y + n.y * halfW))
+            R.append(CGPoint(x: loc.x - n.x * halfW, y: loc.y - n.y * halfW))
+        }
+        return (L, R)
+    }
+
+    private func strokeTangent(at i: Int, pts: [PKStrokePoint]) -> CGPoint {
+        let count = pts.count
+        let a: CGPoint, b: CGPoint
+        if count == 1    { return CGPoint(x: 1, y: 0) }
+        if i == 0        { (a, b) = (pts[0].location, pts[1].location) }
+        else if i == count - 1 { (a, b) = (pts[count - 2].location, pts[count - 1].location) }
+        else             { (a, b) = (pts[i - 1].location, pts[i + 1].location) }
+        let dx = b.x - a.x, dy = b.y - a.y
+        let len = hypot(dx, dy)
+        guard len > 1e-12 else { return CGPoint(x: 1, y: 0) }
+        return CGPoint(x: dx / len, y: dy / len)
     }
 
     private func saveFile(data: Data, filename: String) async throws {

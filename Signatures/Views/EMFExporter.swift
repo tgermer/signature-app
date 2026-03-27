@@ -6,21 +6,25 @@ import UIKit
 /// Implements a subset of the MS-EMF specification entirely on-device.
 /// No external servers or libraries required.
 ///
-/// Coordinate system: device pixels (96 DPI, 1× canvas size).
-/// Scale from 2× canvas pts → 0.5 (divide by 2).
-/// Physical size: 60 × 30 mm → 227 × 114 px at 96 DPI.
+/// Coordinate system: uses 4× the original 96 DPI pixel density for
+/// sub-pixel precision in polygon vertices, avoiding integer-quantization jagginess.
+/// Physical size: 60 × 30 mm → 908 × 454 internal units.
+///
+/// Variable stroke width: uses PKStrokePoint.size (pressure/tilt) to build
+/// filled outline polygons with Chaikin-smoothed edges.
 struct EMFExporter {
 
-    // 2× canvas (0…453.544 pts) → device pixels (0…226)
-    private static let scale: CGFloat = 0.5
-    private static let emfW:  Int32   = 227   // px at 96 DPI for 60 mm
-    private static let emfH:  Int32   = 114   // px at 96 DPI for 30 mm
+    // 2× canvas (0…453.544 pts) → high-res EMF units
+    // scale = 2.0 gives 4× more precision than the 96-DPI pixel baseline
+    private static let scale: CGFloat = 2.0
+    private static let emfW:  Int32   = 908   // 453.544 × 2 ≈ 908
+    private static let emfH:  Int32   = 454   // 226.772 × 2 ≈ 454
 
     // MARK: - Public API
 
     static func generate(drawing: PKDrawing, strokeColor: UIColor, strokeWidth: CGFloat) -> Data {
         var g = EMFExporter()
-        return g.build(drawing: drawing, color: strokeColor, width: strokeWidth)
+        return g.build(drawing: drawing, color: strokeColor)
     }
 
     // MARK: - State
@@ -30,11 +34,12 @@ struct EMFExporter {
 
     // MARK: - Build
 
-    private mutating func build(drawing: PKDrawing, color: UIColor, width: CGFloat) -> Data {
+    private mutating func build(drawing: PKDrawing, color: UIColor) -> Data {
         let headerStart = buf.count
         appendHeader()
-        appendCreatePen(handle: 1, color: color, width: width)
-        appendSelectObject(handle: 1)
+        appendCreateBrush(handle: 1, color: color)
+        appendSelectObject(handle: 0x80000008)  // NULL_PEN stock object (no outline)
+        appendSelectObject(handle: 1)           // our solid brush
 
         for stroke in drawing.strokes {
             let pts = Array(stroke.path)
@@ -62,7 +67,7 @@ struct EMFExporter {
     }
     private mutating func size2(_ cx: Int32, _ cy: Int32) { i32(cx); i32(cy) }
 
-    /// Convert 2×-canvas point to device pixel (integer).
+    /// Convert 2×-canvas coordinate to high-res EMF unit.
     private func px(_ v: CGFloat) -> Int32 { Int32(v * Self.scale) }
 
     // MARK: - EMF Records
@@ -71,7 +76,7 @@ struct EMFExporter {
     private mutating func appendHeader() {
         u32(1)    // iType
         u32(108)  // nSize
-        // rclBounds: inclusive bounding rect in device pixels
+        // rclBounds: inclusive bounding rect in internal units
         rect(0, 0, Self.emfW - 1, Self.emfH - 1)
         // rclFrame: inclusive bounding rect in 0.01 mm (60×30 mm)
         rect(0, 0, 5999, 2999)
@@ -79,11 +84,11 @@ struct EMFExporter {
         u32(0x00010000)   // nVersion
         u32(0)            // nBytes     — patched later
         u32(0)            // nRecords   — patched later
-        u16(1)            // nHandles   (1 pen)
+        u16(1)            // nHandles   (1 brush)
         u16(0)            // sReserved
         u32(0); u32(0)    // nDescription, offDescription
         u32(0)            // nPalEntries
-        size2(Self.emfW, Self.emfH)  // szlDevice (px)
+        size2(Self.emfW, Self.emfH)  // szlDevice (internal units)
         size2(60, 30)                // szlMillimeters
         u32(0); u32(0)               // cbPixelFormat, offPixelFormat
         u32(0)                       // bOpenGL
@@ -101,21 +106,17 @@ struct EMFExporter {
         patch(recordCount,       byteOffset: 52) // nRecords
     }
 
-    /// EMR_CREATEPEN (type 38) — 28 bytes.
-    /// Cosmetic solid pen; round caps come from GDI's default for polylines.
-    private mutating func appendCreatePen(handle: UInt32, color: UIColor, width: CGFloat) {
+    /// EMR_CREATEBRUSHINDIRECT (type 39) — 24 bytes. Solid fill brush.
+    private mutating func appendCreateBrush(handle: UInt32, color: UIColor) {
         var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
         color.getRed(&r, green: &g, blue: &b, alpha: &a)
-        // EMF COLORREF = 0x00BBGGRR
         let colorRef = UInt32(b * 255) << 16 | UInt32(g * 255) << 8 | UInt32(r * 255)
-        // width is in 2×-canvas pts; convert to 1× device pixels
-        let penW = max(1, Int32(width * Self.scale))
 
-        u32(38); u32(28)        // iType: EMR_CREATEPEN, nSize
-        u32(handle)
-        u32(0)                  // lopnStyle: PS_SOLID
-        i32(penW); i32(0)       // lopnWidth: x = width, y ignored for cosmetic pen
-        u32(colorRef)
+        u32(39); u32(24)   // iType: EMR_CREATEBRUSHINDIRECT, nSize
+        u32(handle)        // ihBrush
+        u32(0)             // lbStyle: BS_SOLID
+        u32(colorRef)      // lbColor: COLORREF
+        u32(0)             // lbHatch
         recordCount += 1
     }
 
@@ -131,14 +132,8 @@ struct EMFExporter {
         recordCount += 1
     }
 
-    /// EMR_MOVETOEX (type 27) — 16 bytes. Sets current position without drawing.
-    private mutating func appendMoveToEx(_ x: Int32, _ y: Int32) {
-        u32(27); u32(16); i32(x); i32(y)
-        recordCount += 1
-    }
-
-    /// EMR_POLYLINETO (type 6) — draws line segments from current position.
-    private mutating func appendPolyLineTo(_ points: [(Int32, Int32)]) {
+    /// EMR_POLYGON (type 3) — filled closed polygon using current brush.
+    private mutating func appendPolygon(_ points: [(Int32, Int32)]) {
         guard !points.isEmpty else { return }
         var minX = points[0].0, minY = points[0].1
         var maxX = minX, maxY = minY
@@ -146,11 +141,18 @@ struct EMFExporter {
             minX = min(minX, x); minY = min(minY, y)
             maxX = max(maxX, x); maxY = max(maxY, y)
         }
-        u32(6)
+        u32(3)
         u32(UInt32(28 + points.count * 8))
         rect(minX, minY, maxX, maxY)
         u32(UInt32(points.count))
         for (x, y) in points { i32(x); i32(y) }
+        recordCount += 1
+    }
+
+    /// EMR_ELLIPSE (type 42) — filled ellipse (circle) using current brush.
+    private mutating func appendEllipse(_ cx: Int32, _ cy: Int32, _ r: Int32) {
+        u32(42); u32(24)
+        rect(cx - r, cy - r, cx + r, cy + r)
         recordCount += 1
     }
 
@@ -163,23 +165,71 @@ struct EMFExporter {
         recordCount += 1
     }
 
-    // MARK: - Stroke rendering
+    // MARK: - Stroke rendering (variable width + smooth edges)
 
     private mutating func appendStroke(_ pts: [PKStrokePoint]) {
-        appendMoveToEx(px(pts[0].location.x), px(pts[0].location.y))
+        let n = pts.count - 1
 
         if pts.count == 1 {
-            appendPolyLineTo([(px(pts[0].location.x), px(pts[0].location.y))])
-        } else {
-            // Midpoint spline: actual sample points become "pull-through" waypoints,
-            // midpoints between them become line endpoints — matches SVG/PDF smoothing.
-            var linePts: [(Int32, Int32)] = []
-            for i in 0..<pts.count - 1 {
-                let p = pts[i].location, q = pts[i + 1].location
-                linePts.append((px((p.x + q.x) / 2), px((p.y + q.y) / 2)))
-            }
-            linePts.append((px(pts.last!.location.x), px(pts.last!.location.y)))
-            appendPolyLineTo(linePts)
+            let p = pts[0]
+            let r = max(Int32(p.size.width * Self.scale / 2.0), 1)
+            appendEllipse(px(p.location.x), px(p.location.y), r)
+            return
         }
+
+        // Compute left/right outline edge points in canvas coordinates
+        var Lf: [CGPoint] = [], Rf: [CGPoint] = []
+        for i in 0...n {
+            let loc   = pts[i].location
+            let halfW = max(pts[i].size.width, 0.5) / 2.0
+            let t     = tangentAt(i, pts: pts)
+            let norm  = CGPoint(x: -t.y, y: t.x)
+            Lf.append(CGPoint(x: loc.x + norm.x * halfW, y: loc.y + norm.y * halfW))
+            Rf.append(CGPoint(x: loc.x - norm.x * halfW, y: loc.y - norm.y * halfW))
+        }
+
+        // Convert to integer EMF units and apply one Chaikin smoothing pass
+        let L = chaikin(Lf.map { (px($0.x), px($0.y)) })
+        let R = chaikin(Rf.map { (px($0.x), px($0.y)) })
+
+        // Build polygon: left edge forward + right edge backward
+        var poly: [(Int32, Int32)] = []
+        poly.append(contentsOf: L)
+        poly.append(contentsOf: R.reversed())
+        appendPolygon(poly)
+
+        // Round caps as filled circles
+        let rStart = max(Int32(pts[0].size.width * Self.scale / 2.0), 1)
+        let rEnd   = max(Int32(pts[n].size.width * Self.scale / 2.0), 1)
+        appendEllipse(px(pts[0].location.x), px(pts[0].location.y), rStart)
+        appendEllipse(px(pts[n].location.x), px(pts[n].location.y), rEnd)
+    }
+
+    // MARK: - Smoothing & vector helpers
+
+    /// One iteration of Chaikin's corner-cutting algorithm.
+    /// Approximates a smooth quadratic B-spline while preserving exact endpoints.
+    private func chaikin(_ pts: [(Int32, Int32)]) -> [(Int32, Int32)] {
+        guard pts.count >= 3 else { return pts }
+        var result: [(Int32, Int32)] = [pts.first!]
+        for i in 0..<pts.count - 1 {
+            let (x0, y0) = pts[i], (x1, y1) = pts[i + 1]
+            result.append(((3 * x0 + x1) / 4, (3 * y0 + y1) / 4))
+            result.append(((x0 + 3 * x1) / 4, (y0 + 3 * y1) / 4))
+        }
+        result.append(pts.last!)
+        return result
+    }
+
+    private func tangentAt(_ i: Int, pts: [PKStrokePoint]) -> CGPoint {
+        let count = pts.count
+        let a: CGPoint, b: CGPoint
+        if i == 0            { (a, b) = (pts[0].location,         pts[1].location)         }
+        else if i == count-1 { (a, b) = (pts[count-2].location,   pts[count-1].location)   }
+        else                 { (a, b) = (pts[i-1].location,       pts[i+1].location)       }
+        let dx = b.x - a.x, dy = b.y - a.y
+        let len = hypot(dx, dy)
+        guard len > 1e-12 else { return CGPoint(x: 1, y: 0) }
+        return CGPoint(x: dx / len, y: dy / len)
     }
 }
